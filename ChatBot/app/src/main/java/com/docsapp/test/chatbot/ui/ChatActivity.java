@@ -1,7 +1,11 @@
 package com.docsapp.test.chatbot.ui;
 
 import java.util.Calendar;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
@@ -10,6 +14,7 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Toast;
 import com.docsapp.test.chatbot.R;
+import com.docsapp.test.chatbot.core.MessageSender;
 import com.docsapp.test.chatbot.model.ChatMessage;
 
 /**
@@ -17,10 +22,39 @@ import com.docsapp.test.chatbot.model.ChatMessage;
  */
 public class ChatActivity extends AppCompatActivity {
 
+    public static final int MESSAGE_RECEIVED = 100;
+    public static final int MESSAGE_NOT_RECEIVED = 101;
+
     private ChatViewAdapter mChatViewAdapter;
     private EditText mMessageText;
     private ImageView mSendButton;
     private RecyclerView mRecyclerView;
+
+    /**
+     * A Fixed Thread Pool Executor for Sending message to server,
+     * having pool size of 4
+     */
+    private final ExecutorService mThreadPoolExecutor = Executors.newFixedThreadPool(4);
+
+    /**
+     * Handler , it will be used for sending message to this activity by a worker thread, after sending
+     * a message to server and getting response
+     */
+    private final Handler mChatResponseHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+            case MESSAGE_RECEIVED:
+                ChatMessage chatMessage = (ChatMessage) msg.obj;
+                displayMessage(chatMessage);
+                break;
+            case MESSAGE_NOT_RECEIVED:
+            default:
+                break;
+            }
+            super.handleMessage(msg);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,12 +73,26 @@ public class ChatActivity extends AppCompatActivity {
         mChatViewAdapter = new ChatViewAdapter(this);
         mRecyclerView.setAdapter(mChatViewAdapter);
 
+        mRecyclerView.addOnLayoutChangeListener(mRecyclerViewLayoutChangeListener);
+
         mMessageText = (EditText) findViewById(R.id.chatText);
 
         mSendButton = (ImageView) findViewById(R.id.sendButton);
         mSendButton.setOnClickListener(mSendMessageClickListener);
     }
 
+    /**
+     * LayoutChangeListener for scrolling the Message List Up when Keyboard is shown.
+     */
+    private final View.OnLayoutChangeListener mRecyclerViewLayoutChangeListener = new View.OnLayoutChangeListener() {
+        @Override
+        public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop,
+                                   int oldRight, int oldBottom) {
+            if (bottom < oldBottom) {
+                scrollToLastMessage();
+            }
+        }
+    };
 
     /**
      * Send Button Click Listener
@@ -54,7 +102,14 @@ public class ChatActivity extends AppCompatActivity {
         public void onClick(View v) {
             String message = mMessageText.getText().toString().trim();
             if (!message.isEmpty()) {
-                displayMessage(message, ChatMessage.Sender.SENDER_USER);
+                ChatMessage chatMessage = new ChatMessage();
+                chatMessage.setMessage(message);
+                chatMessage.setSender(ChatMessage.Sender.SENDER_USER);
+                chatMessage.setTimeStamp(Calendar.getInstance().getTimeInMillis());
+                /*Display the message on UI*/
+                displayMessage(chatMessage);
+                /*Submit a new Runnable to Thread pool Executor, for sending the current message*/
+                mThreadPoolExecutor.submit(new MessageSender(chatMessage, mChatResponseHandler));
                 mMessageText.setText("");
             } else {
                 Toast.makeText(ChatActivity.this, "Message is Empty", Toast.LENGTH_SHORT).show();
@@ -66,15 +121,10 @@ public class ChatActivity extends AppCompatActivity {
      * Display the message in Message List, A new ChatMessage Object will be added in the data set of
      * adapter, and adapter will be notified for new data
      *
-     * @param pMessage the message
-     * @param pSender  the sender i.e. user or bot
+     * @param pChatMessage the message
      */
-    private void displayMessage(String pMessage, ChatMessage.Sender pSender) {
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setMessage(pMessage);
-        chatMessage.setSender(pSender);
-        chatMessage.setTimeStamp(Calendar.getInstance().getTimeInMillis());
-        mChatViewAdapter.addNewChatItem(chatMessage);
+    private void displayMessage(ChatMessage pChatMessage) {
+        mChatViewAdapter.addNewChatItem(pChatMessage);
         scrollToLastMessage();
     }
 

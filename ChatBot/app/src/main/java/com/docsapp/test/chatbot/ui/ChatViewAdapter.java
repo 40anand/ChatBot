@@ -58,7 +58,7 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewHolder> {
             view = mLayoutInflater.inflate(R.layout.chat_message_user, null);
             break;
         case MESSAGE_TYPE_BOT:
-            view = mLayoutInflater.inflate(R.layout.chat_message_user, null);
+            view = mLayoutInflater.inflate(R.layout.chat_message_bot, null);
             break;
         default:
             break;
