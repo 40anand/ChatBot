@@ -14,8 +14,13 @@ public class ChatMessage {
     }
 
     public enum Sender {
-        SENDER_USER,
-        SENDER_BOT
+        SENDER_USER(0),
+        SENDER_BOT(1);
+        public final int value;
+
+        Sender(int value) {
+            this.value = value;
+        }
     }
 
     private String message;

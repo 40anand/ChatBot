@@ -30,11 +30,30 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewHolder> {
     /**
      * Add a new ChatMessage at the end of data set of this adapter,
      * and notify the data set observer for the same
+     *
      * @param pChatMessage the ChatMessage object to be added
      */
     public void addNewChatItem(ChatMessage pChatMessage) {
         this.mChatMessageList.add(pChatMessage);
         notifyItemInserted(mChatMessageList.size() - 1);
+    }
+
+    /**
+     * Display chats loaded from Db
+     *
+     * @param pMessageList the List of ChatMessage loaded from Db
+     */
+    public void addChatsFromDb(List<ChatMessage> pMessageList) {
+        if (pMessageList == null || pMessageList.isEmpty()) {
+            return;
+        }
+        if (mChatMessageList.isEmpty()) {
+            mChatMessageList.addAll(pMessageList);
+        } else {
+            pMessageList.addAll(mChatMessageList);
+            mChatMessageList = pMessageList;
+        }
+        notifyDataSetChanged();
     }
 
     @Override

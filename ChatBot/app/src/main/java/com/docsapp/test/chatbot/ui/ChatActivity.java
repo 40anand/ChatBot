@@ -1,8 +1,12 @@
 package com.docsapp.test.chatbot.ui;
 
+import java.lang.ref.WeakReference;
 import java.util.Calendar;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import android.content.Context;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -15,11 +19,14 @@ import android.widget.ImageView;
 import android.widget.Toast;
 import com.docsapp.test.chatbot.R;
 import com.docsapp.test.chatbot.core.MessageSender;
+import com.docsapp.test.chatbot.db.DbHelper;
 import com.docsapp.test.chatbot.model.ChatMessage;
 
 /**
  * Main Activity, Chat messages will be shown here, and sending and receiving message will be handled
  */
+
+@SuppressWarnings("unchecked")
 public class ChatActivity extends AppCompatActivity {
 
     public static final int MESSAGE_RECEIVED = 100;
@@ -27,8 +34,50 @@ public class ChatActivity extends AppCompatActivity {
 
     private ChatViewAdapter mChatViewAdapter;
     private EditText mMessageText;
-    private ImageView mSendButton;
     private RecyclerView mRecyclerView;
+
+    /**
+     * Interface for communicating with ChatLoaderTask
+     */
+    private interface ActivityCallBack {
+        void onLoadFinished(List<ChatMessage> pMessageList);
+    }
+
+    private final ActivityCallBack mActivityCallBack = new ActivityCallBack() {
+        @Override
+        public void onLoadFinished(List<ChatMessage> pMessageList) {
+            mChatViewAdapter.addChatsFromDb(pMessageList);
+        }
+    };
+
+    /**
+     * Async task for loading chats from db
+     */
+    private static class ChatLoaderTask extends AsyncTask {
+
+        private final WeakReference<ActivityCallBack> mActivityCallBackReference;
+        private final DbHelper mDbHelper;
+        private List<ChatMessage> mMessageList;
+
+        ChatLoaderTask(ActivityCallBack pActivityCallBack, Context pContext) {
+            mActivityCallBackReference = new WeakReference<>(pActivityCallBack);
+            mDbHelper = DbHelper.getInstance(pContext);
+        }
+
+        @Override
+        protected Object doInBackground(Object[] params) {
+            mMessageList = mDbHelper.getChatsFromDb();
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Object o) {
+            final ActivityCallBack activityCallBack = mActivityCallBackReference.get();
+            if (activityCallBack != null) {
+                activityCallBack.onLoadFinished(mMessageList);
+            }
+        }
+    }
 
     /**
      * A Fixed Thread Pool Executor for Sending message to server,
@@ -61,6 +110,7 @@ public class ChatActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_chat);
         initViews();
+        loadChatsFromDbInBackground();
     }
 
     /**
@@ -77,8 +127,13 @@ public class ChatActivity extends AppCompatActivity {
 
         mMessageText = (EditText) findViewById(R.id.chatText);
 
-        mSendButton = (ImageView) findViewById(R.id.sendButton);
-        mSendButton.setOnClickListener(mSendMessageClickListener);
+        ImageView sendButton = (ImageView) findViewById(R.id.sendButton);
+        sendButton.setOnClickListener(mSendMessageClickListener);
+    }
+
+    private void loadChatsFromDbInBackground() {
+        ChatLoaderTask chatLoaderTask = new ChatLoaderTask(mActivityCallBack, this);
+        chatLoaderTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, null);
     }
 
     /**
@@ -109,7 +164,7 @@ public class ChatActivity extends AppCompatActivity {
                 /*Display the message on UI*/
                 displayMessage(chatMessage);
                 /*Submit a new Runnable to Thread pool Executor, for sending the current message*/
-                mThreadPoolExecutor.submit(new MessageSender(chatMessage, mChatResponseHandler));
+                mThreadPoolExecutor.submit(new MessageSender(chatMessage, mChatResponseHandler, ChatActivity.this));
                 mMessageText.setText("");
             } else {
                 Toast.makeText(ChatActivity.this, "Message is Empty", Toast.LENGTH_SHORT).show();
